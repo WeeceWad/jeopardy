@@ -2649,7 +2649,8 @@ function netStop(){NET.clients.forEach(c=>{try{c.end(true)}catch(e){}});NET.clie
 /* ---------- host side of the buzzer system ---------- */
 const H={room:null,session:null,phase:'lobby',clueNo:0,locked:[],only:null,winner:null,players:{},up:0,total:0,hb:null,pubT:null};
 function newRoom(){const L='ABCDEFGHJKLMNPQRSTUVWXYZ';let r='';for(let i=0;i<4;i++)r+=L[Math.floor(Math.random()*L.length)];return r}
-function joinURL(){return location.href.split(/[?#]/)[0]+'?join='+H.room}
+function joinBase(){if(/^https?:$/.test(location.protocol)&&!/^(localhost|127\.)/.test(location.hostname))return location.href.split(/[?#]/)[0];return (S.joinBase||'').trim()||null}
+function joinURL(){const b=joinBase();return b?b.split(/[?#]/)[0]+'?join='+H.room:null}
 function teamList(){return G?G.teams.map(t=>({name:t.name,color:t.color})):S.teams.map((n,i)=>({name:(n||'').trim()||`Team ${i+1}`,color:COLORS[i]}))}
 function pubState(){if(!H.room)return;clearTimeout(H.pubT);H.pubT=setTimeout(()=>netPub('state',{session:H.session,teams:teamList(),phase:H.phase,clue:H.clueNo,locked:H.locked,only:H.only,winner:H.winner,players:Object.entries(H.players).map(([pid,p])=>({pid,name:p.name,team:p.team}))},true),30)}
 function setNet(phase,extra){Object.assign(H,{phase},extra||{});pubState()}
@@ -2682,15 +2683,16 @@ function hostBuzz(team,name,clue){
 /* ---------- lobby screen ---------- */
 function showLobby(){
  const el=$('#lobby');const url=joinURL();
- let qrSvg='';try{const q=qrcode(0,'M');q.addData(url);q.make();qrSvg=q.createSvgTag({cellSize:6,margin:2,scalable:true})}catch(e){}
- const fileNote=location.protocol==='file:'?`<div class="warn">You've opened this file straight from your computer, so phones can't load it from the QR code. Either put the file online (GitHub Pages or Netlify Drop work), or have players open a hosted copy of this page, tap “I'm a player” and type the code <b>${H.room}</b>.</div>`:'';
+ let qrSvg='';if(url)try{const q=qrcode(0,'M');q.addData(url);q.make();qrSvg=q.createSvgTag({cellSize:6,margin:2,scalable:true})}catch(e){}
+ const fileNote=url?'':`<div class="warn" style="text-align:left"><b>Phones need a web link for the QR code.</b> This copy is running from your computer, so its address only works on this machine. Put the file online once (GitHub Pages — steps are in the chat), then paste that link here. The game will remember it, and you can keep opening this file locally.<div class="row" style="margin-top:10px"><input id="jbIn" placeholder="https://yourname.github.io/jeopardy/" style="flex:1;min-width:220px;padding:10px;border-radius:8px;border:1px solid var(--line);background:#fff;color:#000" value="${esc(S.joinBase||'')}"><button class="btn small" id="jbSave">Use this link</button></div><div class="muted" style="margin-top:6px">Players can also open that link themselves, tap “I'm a player” and type the code <b>${H.room}</b>.</div></div>`;
  el.innerHTML=`<div class="muted disp" style="font-size:20px">Join on your phone</div>
  <div class="code disp">${H.room}</div>
- <div id="noJoin" class="warn" style="display:none">Phones can’t join from this page — the Claude preview blocks the buzzer connection. Open the downloaded <b>jeopardy-party.html</b> from a web host instead (Netlify Drop or GitHub Pages), or play by tapping teams on screen.</div><div id="joinBox" class="row" style="justify-content:center;align-items:center;gap:22px">${qrSvg?`<div class="qr">${qrSvg}</div>`:''}<div style="text-align:left;max-width:360px"><div class="muted">Scan the code, or open</div><div class="jurl" style="word-break:break-all;font-weight:700;margin:4px 0 12px">${esc(url)}</div><div class="muted">then pick your team. Your phone becomes your buzzer.</div><div style="margin-top:12px"><span id="relayStatus" class="status">Connecting…</span></div></div></div>
+ <div id="noJoin" class="warn" style="display:none">Phones can’t join from this page — the Claude preview blocks the buzzer connection. Open the downloaded <b>jeopardy-party.html</b> from a web host instead (Netlify Drop or GitHub Pages), or play by tapping teams on screen.</div><div id="joinBox" class="row" style="justify-content:center;align-items:center;gap:22px">${qrSvg?`<div class="qr">${qrSvg}</div>`:''}<div style="text-align:left;max-width:360px">${url?`<div class="muted">Scan the code, or open</div><div class="jurl" style="word-break:break-all;font-weight:700;margin:4px 0 12px">${esc(url)}</div>`:''}<div class="muted">then pick your team. Your phone becomes your buzzer.</div><div style="margin-top:12px"><span id="relayStatus" class="status">Connecting…</span></div></div></div>
  ${fileNote}
  <div class="lobbyTeams" id="lobbyTeams"></div>
  <div class="row" style="justify-content:center"><button class="btn" id="lobbyGo" style="font-size:20px;padding:14px 36px">Start game</button><button class="btn ghost" id="lobbyBack">Back to setup</button></div>`;
  renderLobbyTeams();renderLobbyStatus();show('lobby');
+ const js=$('#jbSave');if(js)js.onclick=()=>{let v=$('#jbIn').value.trim();if(!/^https?:\/\//i.test(v)){$('#jbIn').style.borderColor='red';return}S.joinBase=v;saveSetup();showLobby()};
  $('#lobbyGo').onclick=()=>{interstitial('Round 1',`${esc(G.teams[G.control].name)} picks first`,'Start',()=>{setNet('wait');show('game')},false)};
  $('#lobbyBack').onclick=()=>{hostStop();G=null;renderSetup();show('setup')};
 }
@@ -2709,8 +2711,8 @@ function renderCodeBtn(){
  b.title=H.up?'Phone buzzers connected':'Buzzer relays not connected';b.style.borderColor=H.up?'rgba(43,212,125,.6)':'rgba(255,77,94,.6)';
 }
 $('#codeBtn').onclick=()=>{
- let qrSvg='';try{const q=qrcode(0,'M');q.addData(joinURL());q.make();qrSvg=q.createSvgTag({cellSize:5,margin:2,scalable:true})}catch(e){}
- modal(`<h3 class="disp">Join code: ${H.room}</h3>${qrSvg?`<div class="qr" style="align-self:center">${qrSvg}</div>`:''}<div class="muted" style="word-break:break-all">${esc(joinURL())}</div>`+teamList().map((t,i)=>`<div><span class="dot" style="background:${t.color}"></span> <b>${esc(t.name)}</b>: ${Object.values(H.players).filter(p=>p.team===i).map(p=>esc(p.name)).join(', ')||'<span class="muted">nobody</span>'}</div>`).join('')+`<button class="btn ghost" id="mc">Close</button>`);
+ let qrSvg='';if(joinURL())try{const q=qrcode(0,'M');q.addData(joinURL());q.make();qrSvg=q.createSvgTag({cellSize:5,margin:2,scalable:true})}catch(e){}
+ modal(`<h3 class="disp">Join code: ${H.room}</h3>${qrSvg?`<div class="qr" style="align-self:center">${qrSvg}</div>`:''}<div class="muted" style="word-break:break-all">${esc(joinURL()||"No web link set — players open your hosted copy and type the code")}</div>`+teamList().map((t,i)=>`<div><span class="dot" style="background:${t.color}"></span> <b>${esc(t.name)}</b>: ${Object.values(H.players).filter(p=>p.team===i).map(p=>esc(p.name)).join(', ')||'<span class="muted">nobody</span>'}</div>`).join('')+`<button class="btn ghost" id="mc">Close</button>`);
  $('#mc').onclick=closeModal;
 };
 
