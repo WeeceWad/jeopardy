@@ -127,6 +127,17 @@ input,select{font:inherit}
 .timer{width:min(700px,100%);height:14px;background:rgba(255,255,255,.12);border-radius:7px;overflow:hidden}
 .timer i{display:block;height:100%;background:var(--gold);width:100%;transition:width 1s linear}
 .err{color:#ffb3bb;font-size:14px;min-height:18px}
+.fmBoard{width:min(1100px,100%);display:flex;flex-direction:column;gap:6px}
+.fmHead,.fmRow{display:grid;grid-template-columns:1.3fr 1fr 1fr;gap:6px;align-items:stretch}
+.fmHead span{font-weight:700;text-align:center;font-size:18px}
+.fmQ{background:var(--panel);border:1px solid var(--line);border-radius:8px;padding:8px 10px;font-size:14px;display:flex;align-items:center}
+.fmRow.cur .fmQ{border-color:var(--gold)}
+.fmCell{display:flex;align-items:center;justify-content:space-between;gap:8px;background:radial-gradient(ellipse at 50% 35%,#2340f0,#0a17b8 70%);border:2px solid #000;border-radius:8px;padding:6px 12px;min-height:44px}
+.fmCell.empty{opacity:.55;justify-content:center;color:var(--gold);font-size:22px}
+.fmA{font-weight:700;text-transform:uppercase;font-size:clamp(13px,1.5vw,18px)}
+.fmCell b{font-size:clamp(20px,2.3vw,28px);color:var(--gold);text-shadow:2px 2px 0 #000}
+.fmRow.tot .fmCell{justify-content:center;background:linear-gradient(#ffd85a,#f0b400);color:#1a1300}
+.fmFix{font-size:13px;padding:0}
 .sboard{display:grid;grid-template-columns:1fr 1fr;gap:8px;width:min(900px,100%)}
 .sslot{position:relative;display:flex;align-items:center;justify-content:center;gap:12px;min-height:58px;background:radial-gradient(ellipse at 50% 35%,#2340f0,#0a17b8 70%);border:2px solid #000;border-radius:10px;padding:8px 16px;box-shadow:inset 0 0 14px rgba(0,0,0,.5)}
 .sslot.on{justify-content:space-between;background:linear-gradient(#ffd85a,#f0b400);color:#1a1300;border-width:3px;animation:flip .35s ease-out}
@@ -191,8 +202,8 @@ input,select{font:inherit}
     <div class="opt">Difficulty <select id="optDiff"><option value="standard">Standard (pub quiz)</option><option value="easier">Easier (family)</option></select></div>
     <label class="opt"><input type="checkbox" id="optDbl"> Double round (second board, values doubled)</label>
     <label class="opt"><input type="checkbox" id="optDD"> Daily Doubles (1 in round one, 2 in the double round)</label>
-    <label class="opt"><input type="checkbox" id="optSit"> Teams on zero or less sit out the Final Round</label>
-    <div class="opt">Final Round: “We asked 100 people” with <select id="optSurN"><option value="2">2</option><option value="3">3</option><option value="4">4</option><option value="5">5</option></select> survey questions, <select id="optSurG"><option value="1">1 go</option><option value="2">2 goes</option><option value="3">3 goes</option></select> per team each</div>
+    <div class="muted" style="margin:6px 0">After the board: a <b>Wager Round</b> that every team plays, then the top two go into <b>The Final</b> — “We asked 100 people”, 5 questions each.</div>
+    <div class="opt">Final time limit <select id="optFmT"><option value="0">None</option><option value="20">20s first team, 25s second</option><option value="30">30s first team, 35s second</option><option value="45">45s first team, 50s second</option></select></div>
     <div class="opt">Scores shown as <select id="optCur"><option value="£">£</option><option value="$">$</option><option value="€">€</option><option value="">points</option></select></div>
   </div>
 
@@ -2615,7 +2626,7 @@ const CAT_NAMES=Object.keys(BANK);
 const parseClue=s=>{const p=s.split('|');return {q:p[0],a:p[1],alts:p.slice(1)}};
 const keyOf=(cat,q)=>cat+'::'+q.slice(0,50);
 
-let S=Object.assign({teams:['Team 1','Team 2','Team 3'],cats:[],dbl:true,dd:true,sitout:true,cur:'£',diff:'standard',tts:true,voice:'',rate:1,buzz:true,surN:3,surG:2},store.get('jp_setup',{}));
+let S=Object.assign({teams:['Team 1','Team 2','Team 3'],cats:[],dbl:true,dd:true,sitout:true,cur:'£',diff:'standard',tts:true,voice:'',rate:1,buzz:true,fmTime:0},store.get('jp_setup',{}));
 S.cats=S.cats.filter(c=>CAT_NAMES.includes(c));
 let G=null,timerInt=null;
 
@@ -2713,12 +2724,12 @@ function netPub(sub,obj,retain){obj.id=rid();const s=JSON.stringify(obj);NET.cli
 function netStop(){NET.clients.forEach(c=>{try{c.end(true)}catch(e){}});NET.clients=[]}
 
 /* ---------- host side of the buzzer system ---------- */
-const H={room:null,session:null,phase:'lobby',clueNo:0,locked:[],only:null,winner:null,ask:null,fb:null,survey:null,players:{},up:0,total:0,hb:null,pubT:null};
+const H={room:null,session:null,phase:'lobby',clueNo:0,locked:[],only:null,winner:null,ask:null,fb:null,info:null,players:{},up:0,total:0,hb:null,pubT:null};
 function newRoom(){const L='ABCDEFGHJKLMNPQRSTUVWXYZ';let r='';for(let i=0;i<4;i++)r+=L[Math.floor(Math.random()*L.length)];return r}
 function joinBase(){if(/^https?:$/.test(location.protocol)&&!/^(localhost|127\.)/.test(location.hostname))return location.href.split(/[?#]/)[0];return (S.joinBase||'').trim()||null}
 function joinURL(){const b=joinBase();return b?b.split(/[?#]/)[0]+'?join='+H.room:null}
-function teamList(){return G?G.teams.map(t=>({name:t.name,color:t.color})):S.teams.map((n,i)=>({name:(n||'').trim()||`Team ${i+1}`,color:COLORS[i]}))}
-function pubState(){if(!H.room)return;clearTimeout(H.pubT);H.pubT=setTimeout(()=>netPub('state',{session:H.session,teams:teamList(),phase:H.phase,clue:H.clueNo,locked:H.locked,only:H.only,winner:H.winner,ask:H.ask,fb:H.fb,survey:H.survey,players:Object.entries(H.players).map(([pid,p])=>({pid,name:p.name,team:p.team}))},true),30)}
+function teamList(){return G?G.teams.map(t=>({name:t.name,color:t.color,score:t.score})):S.teams.map((n,i)=>({name:(n||'').trim()||`Team ${i+1}`,color:COLORS[i]}))}
+function pubState(){if(!H.room)return;clearTimeout(H.pubT);H.pubT=setTimeout(()=>netPub('state',{session:H.session,cur:S.cur,teams:teamList(),phase:H.phase,clue:H.clueNo,locked:H.locked,only:H.only,winner:H.winner,ask:H.ask,fb:H.fb,info:H.info,players:Object.entries(H.players).map(([pid,p])=>({pid,name:p.name,team:p.team}))},true),30)}
 function setNet(phase,extra){Object.assign(H,{phase},extra||{});pubState()}
 function hostStart(){
  if(!S.buzz){H.room=null;return}
@@ -2738,9 +2749,13 @@ function hostMsg(topic,m){
   if(H.players[m.pid])H.players[m.pid].ts=Date.now();
   hostBuzz(+m.team,String(m.name||'').slice(0,20),m.clue,m.pid);
  }else if(topic==='answer'){
-  const text=String(m.text||'').replace(/\s+/g,' ').trim().slice(0,80),team=+m.team;
-  if(!text||!H.ask||m.n!==H.ask.n||team!==H.ask.team||(H.ask.pid&&H.ask.pid!==m.pid))return;
-  if(H.ask.kind==='survey')surveyGuess(text,team,String(m.name||'').slice(0,20));
+  const text=String(m.text||'').replace(/\s+/g,' ').trim().slice(0,80),team=+m.team,by=String(m.name||'').slice(0,20)||null;
+  if(!H.ask||m.n!==H.ask.n||(H.ask.teams?!H.ask.teams.includes(team):team!==H.ask.team)||(H.ask.pid&&H.ask.pid!==m.pid))return;
+  const F=G&&G.fin;
+  if(H.ask.kind==='wager'){const v=Math.round(+text);if(F&&F.phase==='wager'&&text!==''&&v>=0&&v<=maxBid(team)){F.pw[team]=v;updateWagerStatus()}return}
+  if(H.ask.kind==='fj'){if(F&&F.phase==='wq'&&text){F.ans[team]=text;F.by[team]=by;updateAnswerStatus()}return}
+  if(H.ask.kind==='fm'){fmSubmit(text,team,by);return}
+  if(!text)return;
   else{const cur=G&&G.cur;if(cur&&cur.phase==='clue'&&cur.answering===team){cur.typedBy=String(m.name||'').slice(0,20)||null;submitAnswer(text)}}
  }else if(topic==='bye'){delete H.players[m.pid];renderLobbyTeams();if(G)renderScores();pubState()}
 }
@@ -2802,8 +2817,8 @@ function renderSetup(){
  const need=S.dbl?12:6,n=S.cats.length;
  $('#catInfo').textContent=n===0?`None picked — all ${need} will be random.`:n<need?`${n} of ${need} picked — the other ${need-n} will be random.`:n===need?`${n} of ${need} picked.`:`${n} picked — ${need} will be drawn from these.`;
  let tot=0;Object.values(BANK).forEach(l=>l.forEach(x=>tot+=x.length));
- $('#bankInfo').textContent=`${CAT_NAMES.length} categories, ${tot.toLocaleString('en-GB')} questions (around 50 per category, 10 per value) plus ${SURVEYS.length} “We asked 100 people” surveys for the Final Round. Questions you've already had on this device are saved for last.`;
- $('#optDbl').checked=S.dbl;$('#optDD').checked=S.dd;$('#optSit').checked=S.sitout;$('#optSurN').value=S.surN;$('#optSurG').value=S.surG;$('#optCur').value=S.cur;$('#optDiff').value=S.diff;
+ $('#bankInfo').textContent=`${CAT_NAMES.length} categories, ${tot.toLocaleString('en-GB')} questions (around 50 per category, 10 per value) plus ${FINALS.length} Wager Round questions and ${SURVEYS.length} “We asked 100 people” surveys for the Final. Questions you've already had on this device are saved for last.`;
+ $('#optDbl').checked=S.dbl;$('#optDD').checked=S.dd;$('#optFmT').value=String(S.fmTime||0);$('#optCur').value=S.cur;$('#optDiff').value=S.diff;
  $('#optTts').checked=S.tts;$('#optRate').value=S.rate;$('#optBuzz').checked=S.buzz;
  fillVoices();
 }
@@ -2816,9 +2831,7 @@ $('#catRandom').onclick=()=>{S.cats=shuffle([...CAT_NAMES]).slice(0,S.dbl?12:6);
 $('#catClear').onclick=()=>{S.cats=[];saveSetup();renderSetup()};
 $('#optDbl').onchange=e=>{S.dbl=e.target.checked;saveSetup();renderSetup()};
 $('#optDD').onchange=e=>{S.dd=e.target.checked;saveSetup()};
-$('#optSit').onchange=e=>{S.sitout=e.target.checked;saveSetup()};
-$('#optSurN').onchange=e=>{S.surN=+e.target.value;saveSetup()};
-$('#optSurG').onchange=e=>{S.surG=+e.target.value;saveSetup()};
+$('#optFmT').onchange=e=>{S.fmTime=+e.target.value;saveSetup()};
 $('#optCur').onchange=e=>{S.cur=e.target.value;saveSetup()};
 $('#optDiff').onchange=e=>{S.diff=e.target.value;saveSetup()};
 $('#optTts').onchange=e=>{S.tts=e.target.checked;saveSetup()};
@@ -3019,94 +3032,176 @@ function editScores(){
  $('#sv').onclick=()=>{document.querySelectorAll('#modal input[data-i]').forEach(inp=>{const v=Math.round(+inp.value);if(!isNaN(v))G.teams[+inp.dataset.i].score=v});G.control=+$('#ctrlSel').value;closeModal();renderScores()};
 }
 
-/* ================= FINAL ROUND: "WE ASKED 100 PEOPLE" ================= */
-function eligible(){const el=G.teams.map((t,i)=>i).filter(i=>!S.sitout||G.teams[i].score>0);return el.length?el:G.teams.map((_,i)=>i)}
-function parseSurvey(s){const p=s.split('|');return {q:p[0],a:p.slice(1).map(x=>{const k=x.lastIndexOf('='),al=x.slice(0,k).split('/');return {name:al[0],alts:al,pts:+x.slice(k+1),shown:false,by:null}}).sort((a,b)=>b.pts-a.pts)}}
+/* =====================================================================
+   AFTER THE BOARD:  1) Wager Round — every team bids on one question
+                     2) Final — top two teams, "We asked 100 people", 5 questions each
+   ===================================================================== */
+function parseSurvey(s){const p=s.split('|');return {q:p[0],a:p.slice(1).map(x=>{const k=x.lastIndexOf('='),al=x.slice(0,k).split('/');return {name:al[0],alts:al,pts:+x.slice(k+1)}}).sort((a,b)=>b.pts-a.pts)}}
 function pickSurveys(n){const seen=seenSet(),all=SURVEYS.map(parseSurvey),fresh=shuffle(all.filter(s=>!seen.has('SURVEY::'+s.q))),old=shuffle(all.filter(s=>seen.has('SURVEY::'+s.q)));return [...fresh,...old].slice(0,n)}
+const maxBid=i=>Math.max(0,G.teams[i].score);
+function startTimer(secs,barId,txtId){let s=secs;const b=$('#'+barId),tx=$('#'+txtId);if(b)b.style.width='100%';if(tx)tx.textContent=s;clearInterval(timerInt);timerInt=setInterval(()=>{s--;const b2=$('#'+barId),t2=$('#'+txtId);if(t2)t2.textContent=s>0?s:"Time's up!";if(b2)b2.style.width=(s/secs*100)+'%';if(s<=0){clearInterval(timerInt);beep(false)}},1000)}
+
+/* ---------- 1) Wager Round ---------- */
 function startFinal(){
- stopReading();
- const el=eligible();
- G.fin={phase:'gate',el,qs:pickSurveys(S.surN||3),qi:-1,mult:S.dbl?20:10,goes:S.surG||2,sitting:G.teams.map((_,i)=>i).filter(i=>!el.includes(i))};
- setNet('final',{winner:null,ask:null,fb:null,survey:null});renderFinal();show('final');
+ stopReading();closeModal();
+ G.fin={phase:'wgate',el:G.teams.map((_,i)=>i),base:G.teams.map(t=>t.score),w:{},pw:{},ans:{},by:{},ok:{},shown:{},showAns:false};
+ setNet('final',{winner:null,ask:null,fb:null,info:{head:'Wager Round',text:'Get ready…'}});renderFinal();show('final');
 }
-function surveyStart(){
- const F=G.fin;F.qi++;F.q=F.qs[F.qi];markSeen('SURVEY::'+F.q.q);
- // lowest score goes first; the order rotates each question
- const base=[...F.el].sort((a,b)=>G.teams[a].score-G.teams[b].score);const r=F.qi%base.length;
- F.order=[...base.slice(r),...base.slice(0,r)];
- F.turn=0;F.taken=0;F.max=F.el.length*F.goes;F.strikes={};F.msg=null;F.last=null;F.done=false;F.sub=0;F.phase='play';
- setSurveyAsk();renderFinal();
- readText('We asked 100 people. '+F.q.q+'.',()=>{},()=>{});
-}
-const surveyTeam=()=>{const F=G.fin;return F.order[F.turn%F.order.length]};
-function setSurveyAsk(){
- const F=G.fin;F.sub++;
- H.ask=F.done?null:{team:surveyTeam(),pid:null,n:'s'+F.qi+'-'+F.sub+'-'+rid(),kind:'survey'};
- setNet('final',{ask:H.ask,survey:{q:F.q.q,no:F.qi+1,of:F.qs.length,done:F.done}});
-}
-function surveyGuess(text,team,by){
- const F=G.fin;if(!F||F.phase!=='play'||F.done||team!==surveyTeam())return;
- const m=F.q.a.find(a=>isMatch(text,a.alts));
- if(m&&m.shown){F.msg={kind:'repeat',team,text,ans:m.name,by};H.fb={team,text,kind:'repeat'};tone([440,440],'square');setSurveyAsk();renderFinal();return}
- if(m){m.shown=true;m.by=team;G.teams[team].score+=m.pts*F.mult;F.msg={kind:'ok',team,text,ans:m.name,pts:m.pts,by};F.last=null;H.fb={team,text,kind:'ok'};beep(true)}
- else{F.strikes[team]=(F.strikes[team]||0)+1;F.msg={kind:'no',team,text,by};F.last={team,text};H.fb={team,text,kind:'no'};beep(false)}
- surveyNext();
-}
-function surveyNext(){
- const F=G.fin;F.taken++;F.turn++;
- if(F.q.a.every(a=>a.shown)||F.taken>=F.max)F.done=true;
- setSurveyAsk();renderFinal();
-}
-function surveyAward(idx){ // host fixes a guess that should have counted
- const F=G.fin,a=F.q.a[idx];if(!F.last||a.shown)return;
- a.shown=true;a.by=F.last.team;G.teams[F.last.team].score+=a.pts*F.mult;F.strikes[F.last.team]--;
- F.msg={kind:'ok',team:F.last.team,text:F.last.text,ans:a.name,pts:a.pts,fixed:true};F.last=null;beep(true);
- if(F.q.a.every(x=>x.shown))F.done=true;setSurveyAsk();renderFinal();
-}
+function wagerAsk(kind){const F=G.fin;H.ask={kind,teams:F.el,team:-1,pid:null,n:kind+'-'+rid()};}
 function renderFinal(){
- const F=G.fin,el=$('#final');
- if(F.phase==='gate'){
-  el.innerHTML=`<h1 class="big gold disp">Final Round</h1><div class="disp" style="font-size:clamp(22px,3vw,36px)">We asked 100 people…</div>
-  ${standingsHTML(i=>F.sitting.includes(i))}
-  <div class="warn" style="text-align:left">Teams take turns naming an answer from our survey — lowest score goes first. Find an answer on the board and you win its number of people × ${money(F.mult)}. Already been said? Have another go. Not on the board? That's a strike. Each team gets ${F.goes} ${F.goes===1?'go':'goes'} per question, ${F.qs.length} questions in total.${F.sitting.length?'<br>Teams sitting out can help read out the questions.':''}${H.room&&H.up?'<br>📱 The team whose turn it is can type answers on their phones.':''}</div>
-  <button class="btn" id="fGo" style="font-size:20px;padding:14px 36px">We're ready — show the first survey</button>`;
-  $('#fGo').onclick=surveyStart;return;
+ const F=G.fin,el=$('#final'),fc=G.final;clearInterval(timerInt);
+ if(F.phase&&F.phase.startsWith('fm'))return renderFM();
+ if(F.phase==='wgate'){
+  el.innerHTML=`<h1 class="big gold disp">Wager Round</h1>${standingsHTML()}
+  <div class="warn" style="text-align:left">Every team plays this one. You'll see the category first, then each team secretly bids any amount up to their total. Then the question: get it right and you win your bid, get it wrong and you lose it.<br><b>After this, the top two teams go through to the Final.</b>${H.room&&H.up?'<br>📱 Teams can send their bids and answers from their phones.':''}</div>
+  <button class="btn" id="fGo" style="font-size:20px;padding:14px 36px">We're ready — show the category</button>`;
+  $('#fGo').onclick=()=>{markSeen('FINAL::'+fc.q.slice(0,50));F.phase='wager';wagerAsk('wager');setNet('final',{info:{head:'Wager Round',text:'Category: '+fc.cat}});renderFinal()};
  }
- const cur=F.done?null:surveyTeam(),ct=cur!=null?G.teams[cur]:null;
- const slots=F.q.a.map((a,i)=>a.shown||F.revealAll?`<div class="sslot on"${a.by!=null?` style="border-color:${G.teams[a.by].color}"`:''}><span class="sn">${esc(a.name)}</span><b class="disp">${a.pts}</b>${a.by!=null?`<span class="sby" style="background:${G.teams[a.by].color}"></span>`:''}</div>`:`<button class="sslot" data-i="${i}" ${F.last?'title="Award this answer to the last guess"':''}><span class="disp" style="font-size:28px;color:var(--gold)">${i+1}</span></button>`).join('');
- let msg='';
- if(F.msg){const t=G.teams[F.msg.team],who=(F.msg.by?esc(F.msg.by)+' ('+esc(t.name)+')':esc(t.name));
-  msg=F.msg.kind==='ok'?`<div class="fb ok">${who}: “${esc(F.msg.text)}” — ${esc(F.msg.ans)}! ${F.msg.pts} people = +${money(F.msg.pts*F.mult)}${F.msg.fixed?' (changed by host)':''}</div>`:
-   F.msg.kind==='repeat'?`<div class="fb no">${who}: “${esc(F.msg.text)}” — ${esc(F.msg.ans)} has already been said. Have another go!</div>`:
-   `<div class="fb no">${who}: “${esc(F.msg.text)}” — not on the board ✕</div>${F.last?'<div class="muted">Should that have counted? Tap the hidden answer it matches to award it.</div>':''}`}
- const strikes=F.order.map(i=>`<span class="stk" style="border-color:${G.teams[i].color}"><span class="dot" style="background:${G.teams[i].color}"></span>${esc(G.teams[i].name)} <b>${money(G.teams[i].score)}</b> <span style="color:#ff6b78">${'✕'.repeat(F.strikes[i]||0)}</span></span>`).join('');
- el.innerHTML=`<div class="muted disp" style="font-size:16px">Final Round · survey ${F.qi+1} of ${F.qs.length}</div>
- <div class="disp" style="font-size:clamp(18px,2.2vw,26px);color:#cfd6ff">We asked 100 people…</div>
- <div class="clueText disp" style="flex:none;padding:4px 10px;font-size:clamp(26px,4vw,56px)">${esc(F.q.q)}</div>
- <div class="sboard">${slots}</div>
- <div class="row" style="justify-content:center">${strikes}</div>
- ${msg}
- ${F.done?`<div class="row" style="justify-content:center">${F.revealAll||F.q.a.every(a=>a.shown)?'':'<button class="btn ghost" id="sRest">Reveal the rest</button>'}${F.qi+1<F.qs.length?'<button class="btn" id="sNext">Next survey</button>':'<button class="btn" id="sEnd">Final results</button>'}</div>`:
- `<div class="panel" style="max-width:820px"><div class="buzzed disp" style="color:${ct.color}">${esc(ct.name)}'s turn</div>
-  ${H.room&&H.up?`<div class="lbl">📱 Anyone on ${esc(ct.name)} can type on their phone — or type it here</div>`:''}
-  <div class="ansRow"><input id="sIn" autocomplete="off" placeholder="Type their answer…"><button class="btn" id="sGo">Submit</button></div>
-  <div class="row" style="justify-content:center"><button class="btn ghost small" id="sSkip">Skip turn (counts as a strike)</button><button class="btn ghost small" id="sRead">🔊 Read again</button></div></div>`}`;
- el.querySelectorAll('.sslot[data-i]').forEach(b=>b.onclick=()=>surveyAward(+b.dataset.i));
- const si=$('#sIn');if(si){setTimeout(()=>si.focus(),40);const go=()=>{if(si.value.trim())surveyGuess(si.value.trim(),surveyTeam(),null)};$('#sGo').onclick=go;si.onkeydown=e=>{if(e.key==='Enter')go()}}
- const sk=$('#sSkip');if(sk)sk.onclick=()=>{const tm=surveyTeam();F.strikes[tm]=(F.strikes[tm]||0)+1;F.msg=null;F.last=null;surveyNext()};
- const sr=$('#sRead');if(sr)sr.onclick=()=>readText('We asked 100 people. '+F.q.q+'.',()=>{},()=>{});
- const rr=$('#sRest');if(rr)rr.onclick=()=>{F.revealAll=true;renderFinal()};
- const nx=$('#sNext');if(nx)nx.onclick=()=>{F.revealAll=false;surveyStart()};
- const en=$('#sEnd');if(en)en.onclick=results;
+ else if(F.phase==='wager'){
+  el.innerHTML=`<div class="muted disp" style="font-size:18px">Wager Round category</div><h1 class="big gold disp">${esc(fc.cat)}</h1>
+  <div class="warn">Each team decides how much to bid, from 0 up to their total.${H.room&&H.up?' Send it from a phone, or tell the host quietly.':' Tell the host quietly.'}</div>
+  <div class="finalGrid">${F.el.map(i=>{const t=G.teams[i],mx=maxBid(i);return `<div class="fcard"><b style="color:${t.color}">${esc(t.name)}</b><span class="muted">Total ${money(t.score)} · bid 0 – ${money(mx)}</span><span id="ws${i}" class="muted"></span><input type="password" inputmode="numeric" data-i="${i}" placeholder="${mx?'Type bid, or wait for phone':'Can’t bid (0)'}" ${mx?'':'disabled'}></div>`}).join('')}</div>
+  <div class="err" id="fErr"></div><button class="btn" id="fLock">Lock bids</button>`;
+  updateWagerStatus();
+  $('#fLock').onclick=()=>{let bad=null;el.querySelectorAll('input[data-i]').forEach(inp=>{const i=+inp.dataset.i,mx=maxBid(i);let v=inp.value!==''?Math.round(+inp.value):(F.pw[i]!=null?F.pw[i]:(mx?NaN:0));if(isNaN(v)||v<0||v>mx)bad=G.teams[i].name;else F.w[i]=v});
+   if(bad){$('#fErr').textContent=`Still need a valid bid from ${bad}.`;return}
+   F.phase='wready';H.ask=null;setNet('final',{info:{head:'Wager Round',text:'Bids locked — here comes the question…'}});renderFinal()};
+ }
+ else if(F.phase==='wready'){
+  el.innerHTML=`<h1 class="big gold disp">${esc(fc.cat)}</h1><div class="warn">Bids are locked. Ready for the question?</div><button class="btn" id="fShow" style="font-size:20px;padding:14px 36px">Show the question</button>`;
+  $('#fShow').onclick=()=>{F.phase='wq';wagerAsk('fj');setNet('final',{info:{head:fc.cat,text:fc.q}});renderFinal();readText(fc.q,()=>{},()=>{})};
+ }
+ else if(F.phase==='wq'){
+  el.innerHTML=`<div class="muted disp" style="font-size:18px">${esc(fc.cat)}</div><div class="clueText disp" style="flex:none">${esc(fc.q)}</div>
+  <div class="timer"><i id="tBar"></i></div><div class="row" style="justify-content:center"><button class="btn ghost small" id="tGo">Start 30-second timer</button><button class="btn ghost small" id="fRead">🔊 Read again</button><span id="tTxt" class="disp" style="font-size:22px"></span></div>
+  <div class="finalGrid">${F.el.map(i=>`<div class="fcard"><b style="color:${G.teams[i].color}">${esc(G.teams[i].name)}</b><span id="as${i}" class="muted"></span><input data-i="${i}" autocomplete="off" placeholder="Type answer, or wait for phone"></div>`).join('')}</div>
+  <button class="btn" id="fAns">Lock answers</button>`;
+  updateAnswerStatus();
+  $('#tGo').onclick=()=>startTimer(30,'tBar','tTxt');$('#fRead').onclick=()=>readText(fc.q,()=>{},()=>{});
+  $('#fAns').onclick=()=>{el.querySelectorAll('input[data-i]').forEach(inp=>{const i=+inp.dataset.i;if(inp.value.trim()){F.ans[i]=inp.value.trim();F.by[i]=null}F.ans[i]=F.ans[i]||'';F.ok[i]=!!F.ans[i]&&isMatch(F.ans[i],fc.alts)});
+   stopReading();F.phase='wreveal';H.ask=null;setNet('final',{info:{head:'Wager Round',text:'Answers locked — look at the big screen'}});renderFinal()};
+ }
+ else if(F.phase==='wreveal'){
+  const order=[...F.el].sort((a,b)=>F.base[a]-F.base[b]);
+  order.forEach(i=>{G.teams[i].score=F.base[i]+(F.shown[i]?(F.ok[i]?F.w[i]:-F.w[i]):0)});
+  const all=order.every(i=>F.shown[i]);
+  el.innerHTML=`<h1 class="big gold disp">The Reveal</h1><div class="muted">Lowest total first. Tap each team to reveal their answer and bid.</div>
+  <div class="finalGrid">${order.map(i=>{const t=G.teams[i];return F.shown[i]?
+   `<div class="fcard"><b style="color:${t.color}">${esc(t.name)}</b><div>${F.by[i]?esc(F.by[i])+' said':'Answer'}: “${esc(F.ans[i]||'(no answer)')}”</div><div class="fb ${F.ok[i]?'ok':'no'}">${F.ok[i]?'Correct':'Wrong'} · bid ${money(F.w[i])}</div><div class="disp" style="font-size:24px">${money(t.score)}</div><button class="linkish" data-flip="${i}">${F.ok[i]?'Actually wrong':'Count as correct'}</button></div>`:
+   `<div class="fcard"><b style="color:${t.color}">${esc(t.name)}</b><span class="muted">Was ${money(F.base[i])}</span><button class="btn" data-show="${i}">Reveal</button></div>`}).join('')}</div>
+  ${F.showAns?`<div class="muted">Correct answer</div><div class="answerReveal disp">${esc(fc.a)}</div>`:`<button class="btn ghost" id="fCorrect">Show the correct answer</button>`}
+  ${all?`${standingsHTML()}<button class="btn" id="fQual" style="font-size:20px;padding:14px 36px">Who's in the Final?</button>`:''}`;
+  el.querySelectorAll('[data-show]').forEach(b=>b.onclick=()=>{const i=+b.dataset.show;F.shown[i]=true;beep(F.ok[i]);renderFinal()});
+  el.querySelectorAll('[data-flip]').forEach(b=>b.onclick=()=>{const i=+b.dataset.flip;F.ok[i]=!F.ok[i];renderFinal()});
+  const sc=$('#fCorrect');if(sc)sc.onclick=()=>{F.showAns=true;renderFinal()};
+  const q=$('#fQual');if(q)q.onclick=startFM;
+ }
+}
+function updateWagerStatus(){const F=G.fin;if(!F||F.phase!=='wager')return;F.el.forEach(i=>{const s=$('#ws'+i);if(s)s.innerHTML=F.pw[i]!=null?'📱 Bid received ✓':(maxBid(i)?'Waiting for a bid…':'')})}
+function updateAnswerStatus(){const F=G.fin;if(!F||F.phase!=='wq')return;F.el.forEach(i=>{const s=$('#as'+i);if(s)s.innerHTML=F.ans[i]?`📱 Answer in ✓${F.by[i]?' ('+esc(F.by[i])+')':''}`:'Waiting…'})}
+
+/* ---------- 2) The Final: top two, "We asked 100 people" ---------- */
+function startFM(){
+ const F=G.fin;
+ const ranked=G.teams.map((t,i)=>i).sort((a,b)=>G.teams[b].score-G.teams[a].score||Math.random()-.5);
+ const two=ranked.slice(0,2);
+ Object.assign(F,{phase:'fm-intro',two,side:0,qi:0,qs:pickSurveys(5),fm:[[],[]],rev:[0,0],msg:null,tied:G.teams[ranked[1]].score===(ranked[2]!=null?G.teams[ranked[2]].score:NaN)});
+ F.qs.forEach(s=>markSeen('SURVEY::'+s.q));
+ H.ask=null;setNet('final',{info:{head:'The Final',text:`${G.teams[two[0]].name} v ${G.teams[two[1]].name}`}});renderFinal();
+}
+const fmTeam=()=>G.fin.two[G.fin.side];
+function fmAsk(){const F=G.fin;H.ask={kind:'fm',team:fmTeam(),pid:null,n:'fm'+F.side+'-'+F.qi+'-'+rid()};setNet('final',{info:{head:`Question ${F.qi+1} of 5`,text:F.qs[F.qi].q}})}
+function fmRead(){const F=G.fin;readText(F.qs[F.qi].q,()=>{},()=>{})}
+function fmMatch(text,s){return s.a.findIndex(a=>isMatch(text,a.alts))}
+function fmSubmit(text,team,by){
+ const F=G.fin;if(F.phase!=='fm-run'||team!==fmTeam())return;
+ const s=F.qs[F.qi],m=text?fmMatch(text,s):-1;
+ if(F.side===1&&text){const a=F.fm[0][F.qi];
+  if(a&&a.text&&((m>=0&&a.m===m)||norm(a.text)===norm(text))){F.msg={kind:'repeat',text,by};H.fb={team,text,kind:'repeat'};tone([440,440],'square');fmAsk();renderFinal();return}}
+ F.fm[F.side][F.qi]={text,m,pts:m>=0?s.a[m].pts:0,by};F.msg=null;H.fb=null;
+ F.qi++;
+ if(F.qi>=5){F.phase='fm-reveal';H.ask=null;clearInterval(timerInt);stopReading();setNet('final',{info:{head:'The Final',text:'Revealing '+G.teams[team].name+'’s answers…'}});renderFinal()}
+ else{fmAsk();renderFinal();fmRead()}
+}
+const fmTotal=side=>G.fin.fm[side].slice(0,G.fin.rev[side]).reduce((s,a)=>s+(a?a.pts:0),0);
+function renderFM(){
+ const F=G.fin,el=$('#final'),A=G.teams[F.two[0]],B=G.teams[F.two[1]];
+ const timerSecs=+S.fmTime||0;
+ if(F.phase==='fm-intro'){
+  el.innerHTML=`<div class="muted disp" style="font-size:20px">Through to the Final</div><h1 class="big gold disp">${esc(A.name)} <span style="color:#fff">v</span> ${esc(B.name)}</h1>
+  ${F.tied?'<div class="muted">There was a tie for second place, so it was settled at random.</div>':''}
+  <div class="warn" style="text-align:left"><b>We asked 100 people…</b><br>${esc(A.name)} has the most money, so they go first: 5 survey questions, one answer each, and you score the number of people who said it.<br>Then ${esc(B.name)} gets the same 5 questions — but they can't give the same answer as ${esc(A.name)}.<br><b>Most points at the end wins the game.</b>${timerSecs?`<br>Time limit: ${timerSecs}s for ${esc(A.name)}, ${timerSecs+5}s for ${esc(B.name)}.`:''}</div>
+  <button class="btn" id="fmGo" style="font-size:20px;padding:14px 36px">Start ${esc(A.name)}'s turn</button>`;
+  $('#fmGo').onclick=()=>fmStartSide(0);return;
+ }
+ const board=`<div class="fmBoard"><div class="fmHead"><span></span><span style="color:${A.color}">${esc(A.name)}</span><span style="color:${B.color}">${esc(B.name)}</span></div>`+
+  F.qs.map((s,i)=>{const cell=(side)=>{const a=F.fm[side][i];if(!a)return `<span class="fmCell empty">${F.phase==='fm-run'&&F.side===side&&F.qi===i?'…':''}</span>`;
+    const shown=F.rev[side]>i;return `<span class="fmCell"><span class="fmA">${esc(a.text||'(pass)')}</span><b class="disp">${shown?a.pts:'?'}</b>${shown&&F.phase!=='fm-run'?`<button class="linkish fmFix" data-s="${side}" data-q="${i}" title="Fix this match">✎</button>`:''}</span>`};
+   return `<div class="fmRow${F.phase==='fm-run'&&F.qi===i?' cur':''}"><span class="fmQ">${i+1}. ${esc(s.q)}</span>${cell(0)}${cell(1)}</div>`}).join('')+
+  `<div class="fmRow tot"><span class="fmQ disp">Total</span><span class="fmCell disp" style="font-size:28px">${fmTotal(0)}</span><span class="fmCell disp" style="font-size:28px">${fmTotal(1)}</span></div></div>`;
+ if(F.phase==='fm-run'){
+  const T=G.teams[fmTeam()],s=F.qs[F.qi],other=F.side===1?F.fm[0][F.qi]:null;
+  const msg=F.msg?`<div class="fb no">${F.msg.by?esc(F.msg.by)+': ':''}“${esc(F.msg.text)}” — ${esc(A.name)} already said that. Give another answer!</div>`:'';
+  el.innerHTML=`<div class="buzzed disp" style="color:${T.color}">${esc(T.name)} · question ${F.qi+1} of 5</div>
+  <div class="disp" style="font-size:clamp(16px,2vw,22px);color:#cfd6ff">We asked 100 people…</div>
+  <div class="clueText disp" style="flex:none;padding:2px 10px;font-size:clamp(26px,4vw,54px)">${esc(s.q)}</div>
+  ${other?`<div class="muted">${esc(A.name)} said “${esc(other.text||'(pass)')}” — you can't say that.</div>`:''}
+  ${msg}
+  <div class="panel" style="max-width:820px">
+   ${H.room&&H.up?`<div class="lbl">📱 Anyone on ${esc(T.name)} can type on their phone — or type it here</div>`:''}
+   <div class="ansRow"><input id="fmIn" autocomplete="off" placeholder="Type their answer…"><button class="btn" id="fmSub">Submit</button></div>
+   <div class="row" style="justify-content:center"><button class="btn ghost small" id="fmPass">Pass</button><button class="btn ghost small" id="fmRe">🔊 Read again</button>${timerSecs?`<span id="fmT" class="disp" style="font-size:26px;min-width:60px"></span>`:''}</div>
+   ${timerSecs?'<div class="timer"><i id="fmBar"></i></div>':''}
+  </div>${board}`;
+  const inp=$('#fmIn');setTimeout(()=>inp.focus(),40);
+  const go=()=>{if(inp.value.trim())fmSubmit(inp.value.trim(),fmTeam(),null)};
+  $('#fmSub').onclick=go;inp.onkeydown=e=>{if(e.key==='Enter')go()};
+  $('#fmPass').onclick=()=>fmSubmit('',fmTeam(),null);$('#fmRe').onclick=fmRead;
+  if(timerSecs)fmTimerTick();
+  return;
+ }
+ if(F.phase==='fm-reveal'){
+  const side=F.side,T=G.teams[F.two[side]],done=F.rev[side]>=5;
+  el.innerHTML=`<h1 class="big gold disp" style="font-size:clamp(36px,6vw,80px)">${esc(T.name)}'s answers</h1>${board}
+  <div class="row" style="justify-content:center">${done?(side===0?`<button class="btn" id="fmNext" style="font-size:20px">Start ${esc(B.name)}'s turn</button>`:`<button class="btn" id="fmEnd" style="font-size:20px">And the winner is…</button>`):`<button class="btn" id="fmRev" style="font-size:20px">Reveal answer ${F.rev[side]+1}</button><button class="btn ghost" id="fmAll">Reveal all</button>`}</div>`;
+  const rv=$('#fmRev');if(rv)rv.onclick=()=>{const a=F.fm[side][F.rev[side]];F.rev[side]++;beep(a&&a.pts>0);renderFinal()};
+  const ra=$('#fmAll');if(ra)ra.onclick=()=>{F.rev[side]=5;beep(true);renderFinal()};
+  const nx=$('#fmNext');if(nx)nx.onclick=()=>fmStartSide(1);
+  const en=$('#fmEnd');if(en)en.onclick=()=>{F.phase='fm-done';renderFinal()};
+ }
+ if(F.phase==='fm-done'){
+  const a=fmTotal(0),b=fmTotal(1);
+  let win=a>b?0:b>a?1:(G.teams[F.two[0]].score>=G.teams[F.two[1]].score?0:1);
+  F.champ=F.two[win];
+  el.innerHTML=`<div class="muted disp" style="font-size:20px">${a===b?'Level on points — the team with more money takes it':'The Final'}</div><h1 class="big gold disp">${esc(G.teams[F.champ].name)} win!</h1>${board}
+  <div class="row" style="justify-content:center"><button class="btn ghost" id="fmTop">Show the top survey answers</button><button class="btn" id="fmRes">Final standings</button></div>`;
+  $('#fmTop').onclick=()=>{modal(`<h3 class="disp">Top answers</h3>`+F.qs.map(s=>`<div><b>${esc(s.q)}</b><div class="muted">${s.a.map(x=>esc(x.name)+' '+x.pts).join(' · ')}</div></div>`).join('')+`<button class="btn ghost" id="mc">Close</button>`);$('#mc').onclick=closeModal};
+  $('#fmRes').onclick=results;
+ }
+ el.querySelectorAll('.fmFix').forEach(b=>b.onclick=()=>{const side=+b.dataset.s,qi=+b.dataset.q,s=F.qs[qi],ans=F.fm[side][qi];
+  modal(`<h3 class="disp">Which answer did “${esc(ans.text||'(pass)')}” match?</h3><div class="muted">${esc(s.q)}</div>`+s.a.map((x,k)=>`<button class="btn ghost" data-k="${k}">${esc(x.name)} — ${x.pts}</button>`).join('')+`<button class="btn ghost" data-k="-1">No match — 0</button><button class="linkish" id="mc">Cancel</button>`);
+  document.querySelectorAll('#modal [data-k]').forEach(x=>x.onclick=()=>{const k=+x.dataset.k;ans.m=k;ans.pts=k>=0?s.a[k].pts:0;closeModal();renderFinal()});$('#mc').onclick=closeModal});
+}
+function fmStartSide(side){
+ const F=G.fin;F.side=side;F.qi=0;F.msg=null;F.phase='fm-run';
+ F.tEnd=+S.fmTime?Date.now()+(+S.fmTime+(side?5:0))*1000:0;F.tWarned=false;
+ fmAsk();renderFinal();fmRead();
+}
+function fmTimerTick(){
+ const F=G.fin;clearInterval(timerInt);
+ const total=(+S.fmTime+(F.side?5:0))*1000;
+ const upd=()=>{const left=Math.max(0,F.tEnd-Date.now()),t=$('#fmT'),b=$('#fmBar');if(t)t.textContent=left>0?Math.ceil(left/1000)+'s':"Time's up!";if(b)b.style.width=(left/total*100)+'%';if(!left&&!F.tWarned){F.tWarned=true;beep(false)}if(!left)clearInterval(timerInt)};
+ upd();timerInt=setInterval(upd,250);
 }
 function results(){
- clearInterval(timerInt);stopReading();setNet('over',{ask:null,survey:null});
- const ranked=G.teams.map((t,i)=>({t,i})).sort((a,b)=>b.t.score-a.t.score);
- const top=ranked[0].t.score,winners=ranked.filter(x=>x.t.score===top);
- const title=top<=0?'No winner this time':winners.length>1?"It's a tie!":`${esc(winners[0].t.name)} wins!`;
+ clearInterval(timerInt);stopReading();setNet('over',{ask:null,info:null});
+ const F=G.fin,champ=F&&F.champ!=null?F.champ:null;
+ const ranked=G.teams.map((t,i)=>({t,i})).sort((a,b)=>(b.i===champ)-(a.i===champ)||b.t.score-a.t.score);
+ const top=ranked[0];
+ const title=champ!=null?`${esc(G.teams[champ].name)} win the game!`:top.t.score<=0?'No winner this time':`${esc(top.t.name)} win!`;
  const el=$('#final');
  el.innerHTML=`<div class="muted disp" style="font-size:20px">Game over</div><h1 class="big gold disp">${title}</h1>
- <div class="standings">${ranked.map((x,k)=>`<div class="stand"><span style="display:flex;gap:10px;align-items:center"><b>${k+1}.</b><span class="dot" style="background:${x.t.color}"></span>${esc(x.t.name)}</span><b class="disp">${money(x.t.score)}</b></div>`).join('')}</div>
+ <div class="standings">${ranked.map((x,k)=>`<div class="stand"><span style="display:flex;gap:10px;align-items:center"><b>${x.i===champ?'🏆':(k+1)+'.'}</b><span class="dot" style="background:${x.t.color}"></span>${esc(x.t.name)}</span><b class="disp">${money(x.t.score)}</b></div>`).join('')}</div>
  <div class="row" style="justify-content:center"><button class="btn" id="again">Play again (same teams${H.room?' and phones':''})</button><button class="btn ghost" id="toSetup">Change setup</button></div>`;
  show('final');
  $('#again').onclick=startGame;
@@ -3153,11 +3248,12 @@ function phoneRender(force){
   return;
  }
  const me=st.teams[P.team],locked=(st.locked||[]).includes(P.team),w=st.winner,ask=st.ask,fb=st.fb;
- const myAsk=ask&&ask.team===P.team&&(!ask.pid||ask.pid===P.pid);
+ const myAsk=ask&&(ask.teams?ask.teams.includes(P.team):ask.team===P.team)&&(!ask.pid||ask.pid===P.pid);
+ const multi=ask&&(ask.kind==='wager'||ask.kind==='fj'),info=st.info;
  let msg='',cls='bmsg',live=false,box=false;
  const fbLine=fb&&st.teams[fb.team]?`<div class="fb ${fb.kind==='ok'?'ok':'no'}" style="font-size:15px">${esc(st.teams[fb.team].name)}: “${esc(fb.text)}” — ${fb.kind==='ok'?'correct!':fb.kind==='repeat'?'already said':'wrong'}</div>`:'';
- if(myAsk&&P.sentAsk!==ask.n){box=true;cls+=' win';msg=ask.kind==='survey'?"Your team's turn — name an answer!":ask.pid?"YOU'RE IN! Type your answer":st.only!=null?'Daily Double — type your answer':`${esc(w&&w.name||'Your team')} buzzed — type your team's answer`}
- else if(myAsk)msg='Sent! Look at the big screen…';
+ if(myAsk&&P.sentAsk!==ask.n){box=true;cls+=' win';msg=ask.kind==='wager'?`Your team's bid (0 – ${(st.cur||'')+Math.max(0,me.score||0).toLocaleString('en-GB')}${st.cur?'':' pts'})`:ask.kind==='fj'?"Type your team's answer":ask.kind==='fm'?"Your team's turn — name an answer!":ask.pid?"YOU'RE IN! Type your answer":st.only!=null?'Daily Double — type your answer':`${esc(w&&w.name||'Your team')} buzzed — type your team's answer`}
+ else if(myAsk)msg=multi?'Sent ✓ — you can change it until the host locks it in':'Sent! Look at the big screen…';
  else if(st.phase==='lobby')msg="You're in! Waiting for the game to start…";
  else if(st.phase==='wait')msg='Get ready for the next question…';
  else if(st.phase==='open'){if(locked)msg="Your team's out for this question";else if(P.pending===st.clue)msg='Buzzed! Waiting…';else{msg='BUZZ when you know it!';live=true}}
@@ -3166,15 +3262,16 @@ function phoneRender(force){
   else if(w){if(w.team===P.team){cls+=' win';msg=`${esc(w.name||me.name)} buzzed for your team`}else msg=`${esc(w.name?w.name+' ('+st.teams[w.team].name+')':st.teams[w.team]?.name||'')} buzzed first`}
   else msg='Question over';
  }
- else if(st.phase==='final'){msg=st.survey?(st.survey.done?'Survey finished — look at the big screen':`We asked 100 people… ${ask&&st.teams[ask.team]?esc(st.teams[ask.team].name)+' are answering':''}`):'Final Round — we asked 100 people…'}
+ else if(st.phase==='final'){msg=ask&&ask.kind==='fm'&&st.teams[ask.team]?`${esc(st.teams[ask.team].name)} are answering — no shouting!`:'Look at the big screen'}
  else if(st.phase==='over')msg='Game over — thanks for playing!';
- const survQ=st.phase==='final'&&st.survey&&!st.survey.done?`<div class="disp" style="font-size:20px;max-width:420px">${esc(st.survey.q)}</div>`:'';
+ const survQ=st.phase==='final'&&info?`<div class="muted disp" style="font-size:15px">${esc(info.head||'')}</div><div class="disp" style="font-size:20px;max-width:420px">${esc(info.text||'')}</div>`:'';
  el.innerHTML=`<div class="row" style="justify-content:center"><span class="dot" style="background:${me.color}"></span><b>${esc(P.name||'Player')}</b><span class="muted">· ${esc(me.name)} · room ${esc(P.room)}</span></div>${conn}
  ${survQ}
- ${box?`<div class="${cls}">${msg}</div><input id="pAns" autocomplete="off" autocorrect="off" placeholder="Type your answer" value="${esc(P.draft||'')}"><button class="btn" id="pSend" style="font-size:22px;padding:14px 40px">Send</button>`:
+ ${box?`<div class="${cls}">${msg}</div><input id="pAns" autocomplete="off" autocorrect="off" ${ask.kind==='wager'?'type="number" inputmode="numeric" min="0"':''} placeholder="${ask.kind==='wager'?'Your bid':'Type your answer'}" value="${esc(P.draft||'')}"><button class="btn" id="pSend" style="font-size:22px;padding:14px 40px">Send</button>`:myAsk&&multi?`<div class="${cls}">${msg}</div><button class="btn ghost" id="pChange">Change it</button>`:
  `<button class="bigBuzz disp ${live?'live':'off'}" id="bigBuzz" style="background:radial-gradient(circle at 35% 30%,#fff6,transparent 45%),${me.color}">Buzz</button><div class="${cls}">${msg}</div>`}
  ${fbLine}
  <button class="linkish" id="switchTeam">Change name or team</button>`;
+ const pc=$('#pChange');if(pc)pc.onclick=()=>{P.sentAsk=null;phoneRender(true)};
  const b=$('#bigBuzz');
  if(b){const press=e=>{e.preventDefault();const s=P.state;if(!s||s.phase!=='open'||(s.locked||[]).includes(P.team)||P.pending===s.clue)return;
   netPub('buzz',{pid:P.pid,name:P.name||'Player',team:P.team,clue:s.clue});P.pending=s.clue;try{navigator.vibrate&&navigator.vibrate(80)}catch(e){}phoneRender(true)};
@@ -3195,7 +3292,7 @@ function phoneRender(force){
  if(code&&/^[A-Z]{4}$/.test(code))phoneInit(code);
  else{renderSetup();show('setup')}
 })();
-window.addEventListener('beforeunload',()=>{try{if(H.room){H.phase='over';netPub('state',{session:H.session,teams:teamList(),phase:'over',clue:H.clueNo,locked:[],only:null,winner:null,players:[]},true)}}catch(e){}});
+window.addEventListener('beforeunload',()=>{try{if(H.room){H.phase='over';netPub('state',{session:H.session,cur:S.cur,teams:teamList(),phase:'over',clue:H.clueNo,locked:[],only:null,winner:null,players:[]},true)}}catch(e){}});
 </script>
 </body>
 </html>
