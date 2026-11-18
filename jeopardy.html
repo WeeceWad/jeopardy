@@ -3224,7 +3224,7 @@ function phoneInit(code){
 }
 function phoneConnect(){
  P.state=null;
- netStart(P.room,(topic,m)=>{if(topic==='state'){const newSess=!P.state||P.state.session!==m.session;P.state=m;if(newSess&&P.team!=null)sayHello();if(P.state.phase!=='open')P.pending=null;phoneRender()}},(up,total)=>{const was=P.up;P.up=up;P.total=total;if(up&&!was&&P.team!=null)sayHello();phoneRender()});
+ netStart(P.room,(topic,m)=>{if(topic==='state'){if(m.game==='ff'){location.replace('familyfortunes.html?join='+P.room);return}const newSess=!P.state||P.state.session!==m.session;P.state=m;if(newSess&&P.team!=null)sayHello();if(P.state.phase!=='open')P.pending=null;phoneRender()}},(up,total)=>{const was=P.up;P.up=up;P.total=total;if(up&&!was&&P.team!=null)sayHello();phoneRender()});
  clearInterval(P.hello);P.hello=setInterval(()=>{if(P.team!=null)sayHello()},25000);
  phoneRender();
 }
